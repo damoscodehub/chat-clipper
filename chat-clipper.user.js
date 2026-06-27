@@ -1,12 +1,14 @@
 // ==UserScript==
 // @name         Chat Clipper  (Arousr · OnlyFans · Fansly)
 // @namespace    https://github.com/damoscodehub/chat-clipper
-// @version      1.1.1
+// @version      1.2.0
 // @description  Per-message copy buttons, selective copy, and chat-export in Arousr, OnlyFans, and Fansly
 // @author       damoscodehub
 // @match        https://chat.arousr.com/*
 // @match        https://onlyfans.com/my/chats/*
 // @match        https://fansly.com/messages/*
+// @match        https://loyalfans.com/*
+// @match        https://*.loyalfans.com/*
 // @updateURL    https://raw.githubusercontent.com/damoscodehub/chat-clipper/main/chat-clipper.user.js
 // @downloadURL  https://raw.githubusercontent.com/damoscodehub/chat-clipper/main/chat-clipper.user.js
 // @grant        GM_setClipboard
@@ -88,26 +90,48 @@
     .ac-msg-btn {
       padding: 0; border: none; background: none; cursor: pointer;
       display: inline-flex; align-items: center; justify-content: center;
+      width: 20px; height: 20px;
       opacity: 0; transition: opacity .18s ease; flex-shrink: 0;
       vertical-align: middle; position: relative; z-index: 2;
+      transform: translateZ(0); contain: layout style;
     }
     .ac-msg-btn:hover { opacity: 1 !important; }
 
     /* Per-message checkbox */
     .ac-msg-cb {
-      width: 15px; height: 15px; cursor: pointer; accent-color: #9b59b6;
-      margin: 0; flex-shrink: 0; opacity: 0; transition: opacity .18s ease;
+      -webkit-appearance: none; appearance: none;
+      width: 16px; height: 16px;
+      min-width: 16px; max-width: 16px;
+      min-height: 16px; max-height: 16px;
+      padding: 0 !important; margin: 0;
+      box-sizing: border-box; flex: none;
+      cursor: pointer;
+      opacity: 0; transition: opacity .18s ease;
       position: relative; z-index: 2;
+      transform: translateZ(0); contain: layout style;
+      background: transparent;
+      border: 1px solid rgba(255,255,255,0.5);
+      border-radius: 2px;
+    }
+    .ac-msg-cb:hover { border-color: rgba(255,255,255,0.8); }
+    .ac-msg-cb:checked {
+      background: #9b59b6 url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M13 3.5L6.5 11 3 7.5' fill='none' stroke='%23fff' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center/12px no-repeat;
+      border-color: #9b59b6;
+    }
+    .ac-msg-cb:checked:hover {
+      background: #9b59b6 url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M13 3.5L6.5 11 3 7.5' fill='none' stroke='%23fff' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center/12px no-repeat;
+      border-color: #9b59b6;
     }
     .ac-msg-cb:checked, .ac-msg-cb:hover { opacity: 1 !important; }
     body.ac-selecting .ac-msg-cb { opacity: 0.6; }
 
     /* Range-select buttons (▲ ▼) */
-    .ac-sel-group { display: inline-flex; align-items: center; gap: 1px; }
+    .ac-sel-group { display: inline-flex; align-items: center; gap: 1px; flex-shrink: 0; transform: translateZ(0); }
     .ac-range-btn {
       background: none; border: none; cursor: pointer; font-size: 8px;
       line-height: 1; padding: 1px 3px; opacity: 0; color: #aaa;
       transition: opacity .15s ease; flex-shrink: 0;
+      transform: translateZ(0); contain: layout style;
     }
     .ac-range-btn:hover { opacity: 1 !important; color: #fff; }
     body.ac-selecting .ac-range-btn { opacity: 0.5; }
@@ -164,6 +188,39 @@
     app-group-message.message:hover .ac-msg-cb    { opacity: 0.6; }
     app-group-message.message:hover .ac-range-btn { opacity: 0.4; }
     app-group-message.message.ac-selected { background: rgba(155,89,182,0.12); border-radius: 8px; }
+
+    /* ── Loyalfans ──────────────────────────────────────────────────── */
+    app-message .message-footer {
+      display: inline-flex !important;
+      align-items: center;
+      flex-direction: row !important;
+      gap: 6px !important;
+    }
+    app-message:not(.own) .message-footer {
+      justify-content: flex-start !important;
+    }
+    .ac-lf-row {
+      display: inline-flex; align-items: center; gap: 4px;
+      flex-shrink: 0; transform: translateZ(0);
+    }
+    app-message:hover .ac-msg-btn   { opacity: 0.5; }
+    app-message:hover .ac-msg-cb    { opacity: 0.6; }
+    app-message:hover .ac-range-btn { opacity: 0.4; }
+    app-message.ac-selected { background: rgba(155,89,182,0.12); border-radius: 8px; }
+
+    /* Loyalfans header: override site grid -> flex so 4 buttons don't wrap */
+    .window-actions-left {
+      display: flex !important;
+      align-items: center;
+      gap: 6px;
+      flex-wrap: nowrap;
+    }
+    .window-actions-left .ac-head-btn {
+      width: 28px; height: 28px; flex-shrink: 0;
+    }
+    .window-actions-left .ac-head-btn svg {
+      width: 18px; height: 18px;
+    }
   `;
   document.head.appendChild(styleEl);
 
@@ -514,8 +571,19 @@
             // Use the last .b-chat__message__time to skip the one inside .b-chat__replied-message
             const timeEls = msgEl.querySelectorAll('.b-chat__message__time');
             const timeEl = timeEls.length ? timeEls[timeEls.length - 1] : null;
-            if (timeEl) { timeEl.appendChild(btn); if (cb) timeEl.appendChild(cb); }
-            else        { msgEl.appendChild(btn);  if (cb) msgEl.appendChild(cb); }
+            if (timeEl) {
+              if (isOut(msgEl)) {
+                // Own messages: button + checkbox before timestamp
+                if (cb) timeEl.insertBefore(cb, timeEl.firstChild);
+                timeEl.insertBefore(btn, timeEl.firstChild);
+              } else {
+                timeEl.appendChild(btn);
+                if (cb) timeEl.appendChild(cb);
+              }
+            } else {
+              msgEl.appendChild(btn);
+              if (cb) msgEl.appendChild(cb);
+            }
           },
         },
       ],
@@ -752,10 +820,112 @@
     };
   }
 
+  /* -----------------------------------------------------------------
+   * Loyalfans adapter
+   * TODO: media messages (no examples in saved HTML snapshot)
+   * TODO: tips/purchases (not observed in snapshot)
+   * ----------------------------------------------------------------- */
+  function makeLoyalfansAdapter() {
+    const MSG_SEL = 'app-message';
+
+    function getMsgText(node) {
+      const textEl = node.querySelector('._message');
+      if (textEl) return textEl.innerText?.trim() || '';
+      return '';
+    }
+
+    function isOut(node) { return node.classList.contains('own'); }
+
+    function getReplyPreview(node) {
+      return node.querySelector('app-reply-preview');
+    }
+
+    return {
+      name: 'loyalfans',
+      getUserName() {
+        const el = document.querySelector('.window-title.user-display-name');
+        if (el) {
+          const clone = el.cloneNode(true);
+          const handle = clone.querySelector('.user-handle');
+          if (handle) handle.remove();
+          return clone.textContent?.trim() || 'User';
+        }
+        return 'User';
+      },
+      getAiName() { return 'Me'; },
+      getAllChatNodes() {
+        return Array.from(document.querySelectorAll(MSG_SEL));
+      },
+      buildChatLine(node, userName, aiName) {
+        const t    = getMsgText(node);
+        const out  = isOut(node);
+        const who  = out ? `[${aiName}]` : `[${userName}]`;
+        const name = out ? aiName : userName;
+        const lines = [];
+
+        const reply = getReplyPreview(node);
+        if (reply) {
+          const quotedAuthor = reply.querySelector('.sender-name')?.textContent?.trim() || '?';
+          const quotedText   = reply.querySelector('.text.has-text')?.textContent?.trim() || '';
+          if (quotedText) {
+            lines.push(`[NARRATOR]: ${name} replies to the message of ${quotedAuthor} where they said "${quotedText}"`);
+          } else {
+            lines.push(`[NARRATOR]: ${name} replies to the message of ${quotedAuthor}`);
+          }
+        }
+
+        if (t) lines.push(`${who}: ${t}`);
+        return lines.length ? lines.join('\n') : null;
+      },
+      selectedSelector: `${MSG_SEL}.ac-selected`,
+      deselectSelector: MSG_SEL,
+      getHeaderBar() {
+        return document.querySelector('.window-actions-left');
+      },
+      getHeaderRef() {
+        return null; // append at end, after user-name + follower
+      },
+      getTextarea() {
+        return document.querySelector('textarea#message-input');
+      },
+      copyables: [
+        {
+          selector:   MSG_SEL,
+          doneAttr:   'data-ac-done',
+          selectable: true,
+          getText(node) {
+            return getMsgText(node) || null;
+          },
+          inject(node, btn, cb) {
+            const footer = node.querySelector('.message-footer');
+            if (footer) {
+              const row = document.createElement('span');
+              row.className = 'ac-lf-row';
+              row.appendChild(btn);
+              if (cb) row.appendChild(cb);
+              // Own messages (right-aligned): buttons before timestamp
+              // Other messages (left-aligned):  buttons after timestamp
+              if (node.classList.contains('own')) {
+                footer.insertBefore(row, footer.firstChild);
+              } else {
+                footer.appendChild(row);
+              }
+            } else {
+              const textArea = node.querySelector('.message-text');
+              if (textArea) { textArea.appendChild(btn); if (cb) textArea.appendChild(cb); }
+              else          { node.appendChild(btn);  if (cb) node.appendChild(cb); }
+            }
+          },
+        },
+      ],
+    };
+  }
+
   function detectPlatform() {
     const h = location.hostname;
     if (h.includes('onlyfans.com')) return makeOnlyFansAdapter();
     if (h.includes('fansly.com'))   return makeFanslyAdapter();
+    if (h.includes('loyalfans.com') || h.includes('loyalfans')) return makeLoyalfansAdapter();
     return makeArousrAdapter();
   }
 
