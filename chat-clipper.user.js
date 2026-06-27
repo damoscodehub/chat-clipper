@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Chat Clipper  (Arousr · OnlyFans · Fansly)
 // @namespace    https://github.com/damoscodehub/chat-clipper
-// @version      1.2.1
+// @version      1.2.2
 // @description  Per-message copy buttons, selective copy, and chat-export in Arousr, OnlyFans, and Fansly
 // @author       damoscodehub
 // @match        https://chat.arousr.com/*
@@ -233,7 +233,7 @@
   /* ── Shared config ─────────────────────────────────────────────────── */
 
   const INCLUDE_DATETIME = false;
-  const GREETING_TEXT = 'Hey there! 😘 How are you?';
+  const GREETING_TEXT = 'Hi there! How are you? What\'s your name, or what do you like to be called if you\'d rather not share your real name?';
 
   /* ── NARRATOR config (Arousr) ────────────────────────────────────────
    *
