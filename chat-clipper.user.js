@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Chat Clipper  (Arousr · OnlyFans · Fansly)
 // @namespace    https://github.com/damoscodehub/chat-clipper
-// @version      1.1.0
+// @version      1.1.1
 // @description  Per-message copy buttons, selective copy, and chat-export in Arousr, OnlyFans, and Fansly
 // @author       damoscodehub
 // @match        https://chat.arousr.com/*
@@ -147,7 +147,7 @@
     .system_msg_container.ac-selected { background: rgba(155,89,182,0.12); border-radius: 8px; }
 
     /* ── OnlyFans ───────────────────────────────────────────────────── */
-    .b-chat__message__time {
+    .b-chat__message > .b-chat__message__time {
       display: inline-flex !important; align-items: center !important;
       gap: 4px !important; flex-wrap: nowrap;
     }
@@ -404,8 +404,20 @@
     const MSG_SEL = '.b-chat__item-message .b-chat__message:not(.b-chat__message__system)';
 
     function getMsgText(msgEl) {
-      const p = msgEl.querySelector('.b-chat__message__text-holder p, [at-attr="message_text"] p');
-      return (p?.innerText || p?.textContent || '').trim();
+      // For reply messages, skip the quoted text inside .b-chat__replied-message
+      const replied = msgEl.querySelector('.b-chat__replied-message');
+      if (replied) {
+        const wrapper = msgEl.querySelector('.b-chat__replied-message ~ [at-attr="message_text"]');
+        if (!wrapper) return '';
+        const ps = wrapper.querySelectorAll('p');
+        if (ps.length) return Array.from(ps).map(p => p.innerText || p.textContent || '').join('\n').trim();
+        return wrapper.innerText?.trim() || '';
+      }
+      const ps = msgEl.querySelectorAll('.b-chat__message__text-holder p, [at-attr="message_text"] p');
+      if (ps.length) return Array.from(ps).map(p => p.innerText || p.textContent || '').join('\n').trim();
+      const holder = msgEl.querySelector('.b-chat__message__text-holder');
+      if (holder) return holder.innerText?.trim() || '';
+      return '';
     }
     function hasMedia(msgEl) {
       return msgEl.classList.contains('m-has-media')
@@ -437,6 +449,21 @@
         const who  = out ? `[${aiName}]` : `[${userName}]`;
         const name = out ? aiName : userName;
         const lines = [];
+
+        // Reply context
+        const replied = msgEl.querySelector('.b-chat__replied-message');
+        if (replied) {
+          const quotedAuthor = replied.querySelector('.b-username')?.textContent?.trim() || '?';
+          const quotedTextEl = replied.querySelector('.b-chat__message__text-holder');
+          let quotedText = quotedTextEl?.textContent?.trim() || '';
+          quotedText = quotedText.replace(/^["\u201C\u201D\s]+|["\u201C\u201D\s]+$/g, '').trim();
+          if (quotedText) {
+            lines.push(`[NARRATOR]: ${name} replies to the message of ${quotedAuthor} where they said "${quotedText}"`);
+          } else {
+            lines.push(`[NARRATOR]: ${name} replies to the message of ${quotedAuthor}`);
+          }
+        }
+
         if (hasMedia(msgEl)) {
           const type = msgEl.classList.contains('m-photo') ? 'an image'
                      : msgEl.classList.contains('m-video') ? 'a video' : 'media';
@@ -484,7 +511,9 @@
             }
 
             // Text button (or sole media button) goes in the time element
-            const timeEl = msgEl.querySelector('.b-chat__message__time');
+            // Use the last .b-chat__message__time to skip the one inside .b-chat__replied-message
+            const timeEls = msgEl.querySelectorAll('.b-chat__message__time');
+            const timeEl = timeEls.length ? timeEls[timeEls.length - 1] : null;
             if (timeEl) { timeEl.appendChild(btn); if (cb) timeEl.appendChild(cb); }
             else        { msgEl.appendChild(btn);  if (cb) msgEl.appendChild(cb); }
           },
