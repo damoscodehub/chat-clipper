@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Chat Clipper  (Arousr · OnlyFans · Fansly)
 // @namespace    https://github.com/damoscodehub/chat-clipper
-// @version      1.2.0
+// @version      1.2.1
 // @description  Per-message copy buttons, selective copy, and chat-export in Arousr, OnlyFans, and Fansly
 // @author       damoscodehub
 // @match        https://chat.arousr.com/*
@@ -179,6 +179,12 @@
     .b-chat__item-message:hover .ac-msg-cb    { opacity: 0.6; }
     .b-chat__item-message:hover .ac-range-btn { opacity: 0.4; }
     .b-chat__item-message.ac-selected { background: rgba(155,89,182,0.12); border-radius: 8px; }
+    .b-chat__header__search-btn .b-chat__subheader__col_text {
+      display: none;
+    }
+    .b-chat__subheader {
+      padding-right: 10px !important;
+    }
 
     /* ── Fansly ─────────────────────────────────────────────────────── */
     .ac-fansly-bar { display: flex; align-items: center; gap: 6px; width: 100%; }
@@ -1167,18 +1173,40 @@
       toClipboard(buildChat(false, sel.length ? sel : null))
         .then(() => flash(diceBtn, SVG_CHECK_LG)).catch(() => {});
     });
-
     // Left-to-right order: [deselect] [dice] [named] [wave] ...existing buttons...
     if (ref) {
-      bar.insertBefore(waveBtn,     ref);
-      bar.insertBefore(namedBtn,    waveBtn);
-      bar.insertBefore(diceBtn,     namedBtn);
-      bar.insertBefore(deselectBtn, diceBtn);
+      if (ADAPTER.name === 'onlyfans') {
+        // Wrap buttons in a group so the whole block is right-aligned;
+        // deselect appears as the first element without pushing Gallery/Find
+        const grp = document.createElement('div');
+        grp.style.cssText = 'display:flex;align-items:center;gap:6px;margin-left:auto;';
+        grp.appendChild(deselectBtn);
+        grp.appendChild(diceBtn);
+        grp.appendChild(namedBtn);
+        grp.appendChild(waveBtn);
+        bar.insertBefore(grp, ref);
+      } else {
+        bar.insertBefore(waveBtn,     ref);
+        bar.insertBefore(namedBtn,    waveBtn);
+        bar.insertBefore(diceBtn,     namedBtn);
+        bar.insertBefore(deselectBtn, diceBtn);
+      }
     } else {
-      bar.appendChild(deselectBtn);
-      bar.appendChild(diceBtn);
-      bar.appendChild(namedBtn);
-      bar.appendChild(waveBtn);
+      if (ADAPTER.name === 'loyalfans') {
+        // Push header buttons to the far right of the bar
+        const grp = document.createElement('div');
+        grp.style.cssText = 'display:flex;align-items:center;gap:6px;margin-left:auto;';
+        grp.appendChild(deselectBtn);
+        grp.appendChild(diceBtn);
+        grp.appendChild(namedBtn);
+        grp.appendChild(waveBtn);
+        bar.appendChild(grp);
+      } else {
+        bar.appendChild(deselectBtn);
+        bar.appendChild(diceBtn);
+        bar.appendChild(namedBtn);
+        bar.appendChild(waveBtn);
+      }
     }
 
     bar.dataset.acDone = '1';
