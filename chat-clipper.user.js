@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Chat Clipper  (Arousr · OnlyFans · Fansly)
 // @namespace    https://github.com/damoscodehub/chat-clipper
-// @version      1.2.2
+// @version      1.2.3
 // @description  Per-message copy buttons, selective copy, and chat-export in Arousr, OnlyFans, and Fansly
 // @author       damoscodehub
 // @match        https://chat.arousr.com/*
@@ -541,7 +541,7 @@
       getHeaderRef(bar) { return bar.firstElementChild || null; },
       getTextarea() {
         return document.querySelector(
-          '.b-chat__message-input textarea, [at-attr="message_input"] textarea'
+          '.b-chat__message-input textarea, [at-attr="message_input"] textarea, .b-text-editor'
         );
       },
       copyables: [
@@ -757,7 +757,7 @@
       },
       getTextarea() {
         return document.querySelector(
-          'app-message-send-area textarea, .message-input textarea'
+          'app-message-send-area textarea, textarea.message-input, .message-input-container textarea'
         );
       },
       copyables: [
@@ -1137,15 +1137,22 @@
     waveBtn.title = 'Insert greeting message';
     waveBtn.innerHTML = SVG_WAVE;
     waveBtn.addEventListener('click', () => {
-      const textarea = ADAPTER.getTextarea();
-      if (textarea) {
+      const input = ADAPTER.getTextarea();
+      if (input) {
         try {
-          const setter = Object.getOwnPropertyDescriptor(
-            window.HTMLTextAreaElement.prototype, 'value'
-          ).set;
-          setter.call(textarea, GREETING_TEXT);
-          textarea.dispatchEvent(new Event('input', { bubbles: true }));
-          textarea.focus();
+          if (input.tagName === 'TEXTAREA' || input.tagName === 'INPUT') {
+            const setter = Object.getOwnPropertyDescriptor(
+              window.HTMLTextAreaElement.prototype, 'value'
+            ).set;
+            setter.call(input, GREETING_TEXT);
+            input.dispatchEvent(new Event('input', { bubbles: true }));
+          } else if (input.isContentEditable) {
+            input.focus();
+            document.execCommand('selectAll', false, null);
+            document.execCommand('delete', false, null);
+            document.execCommand('insertText', false, GREETING_TEXT);
+          }
+          input.focus();
         } catch (_) {
           toClipboard(GREETING_TEXT);
         }
