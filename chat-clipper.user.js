@@ -243,15 +243,20 @@
     return who;
   }
 
-  // Parse a time string to Unix-ms; if date-only strings like "11:17 AM" fail,
-  // fall back to prepending today's full date so the local-timezone offset is used.
+  // Parse a time string to Unix-ms; if time-only strings like "11:17 AM" or
+  // date+time strings without a year (e.g. "Jun 29, 11:46 PM") fail Date.parse,
+  // extract just the time portion and prepend today's full date.
   function parseTimeOrDefault(str) {
     const ms = Date.parse(str);
     if (!isNaN(ms)) return ms;
     const now = new Date();
     const datePart = now.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-    const ms2 = Date.parse(`${datePart} ${str}`);
-    return isNaN(ms2) ? null : ms2;
+    const m = str.match(/\d{1,2}:\d{2}(?:\s*[AaPp][Mm])?/);
+    if (m) {
+      const ms2 = Date.parse(`${datePart} ${m[0]}`);
+      if (!isNaN(ms2)) return ms2;
+    }
+    return null;
   }
 
   /* ── NARRATOR config (Arousr) ────────────────────────────────────────
@@ -532,9 +537,16 @@
         return Array.from(document.querySelectorAll(MSG_SEL));
       },
       getMsgDatetime(msgEl) {
-        // Time text from the outer .b-chat__message__time
-        const timeEls = msgEl.querySelectorAll('.b-chat__message__time');
-        const timeEl  = timeEls.length ? timeEls[timeEls.length - 1] : null;
+        // Time lives inside .b-chat__message for own messages,
+        // but is a sibling of .b-chat__message for other-user messages.
+        let timeEl = msgEl.querySelector('.b-chat__message__time');
+        if (!timeEl) {
+          let sib = msgEl.nextElementSibling;
+          while (sib && !sib.classList.contains('b-chat__message__time')) {
+            sib = sib.nextElementSibling;
+          }
+          timeEl = sib;
+        }
         const timeSpan = timeEl?.querySelector('span');
         const time     = timeSpan?.textContent?.trim();
         if (!time) return null;
