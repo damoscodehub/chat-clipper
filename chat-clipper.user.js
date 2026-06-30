@@ -774,8 +774,13 @@
         return Array.from(document.querySelectorAll('app-group-message.message'));
       },
       getMsgDatetime(node) {
-        const timeEl = node.querySelector('.timestamp .margin-right-text');
-        const time   = timeEl?.textContent?.trim();
+        // Timestamp is a sibling of app-group-message inside the flex-col parent
+        let timeEl = node.nextElementSibling;
+        while (timeEl && !timeEl.classList.contains('timestamp')) {
+          timeEl = timeEl.nextElementSibling;
+        }
+        const timeSpan = timeEl?.querySelector('.margin-right-text');
+        const time     = timeSpan?.textContent?.trim();
         if (!time) return null;
         return parseTimeOrDefault(time);
       },
