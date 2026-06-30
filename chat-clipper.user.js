@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Chat Clipper  (Arousr · OnlyFans · Fansly)
 // @namespace    https://github.com/damoscodehub/chat-clipper
-// @version      1.3.0
+// @version      1.3.1
 // @description  Per-message copy buttons, selective copy, and chat-export in Arousr, OnlyFans, and Fansly
 // @author       damoscodehub
 // @match        https://chat.arousr.com/*
@@ -547,7 +547,8 @@
           }
           timeEl = sib;
         }
-        const timeSpan = timeEl?.querySelector('span');
+        // Use span[title] to skip our injected .ac-sel-group span
+        const timeSpan = timeEl?.querySelector('span[title]');
         const time     = timeSpan?.textContent?.trim();
         if (!time) return null;
         // Date from system timeline in parent .b-chat__item-message
