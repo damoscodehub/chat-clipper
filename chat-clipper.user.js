@@ -243,6 +243,17 @@
     return who;
   }
 
+  // Parse a time string to Unix-ms; if date-only strings like "11:17 AM" fail,
+  // fall back to prepending today's full date so the local-timezone offset is used.
+  function parseTimeOrDefault(str) {
+    const ms = Date.parse(str);
+    if (!isNaN(ms)) return ms;
+    const now = new Date();
+    const datePart = now.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    const ms2 = Date.parse(`${datePart} ${str}`);
+    return isNaN(ms2) ? null : ms2;
+  }
+
   /* ── NARRATOR config (Arousr) ────────────────────────────────────────
    *
    * Templates support {user} and {ai} placeholders.
@@ -350,13 +361,13 @@
       getMsgDatetime(node, dateOf) {
         if (node.classList.contains('system_msg_container')) return null;
         const isIn   = node.classList.contains('ar_incoming_msg_box');
-        const timeEl = node.querySelector(isIn ? '.chatInMsgTime' : '.chatOutMsgTime');
+        const sel    = isIn ? '.chatInMsgTime' : '.sysMsgTime, .chatOutMsgTime';
+        const timeEl = node.querySelector(sel);
         const time   = timeEl?.textContent?.trim() || '';
         if (!time) return null;
         const dateLabel = dateOf?.get(node) || '';
         const dateStr   = dateLabel ? `${dateLabel} ${time}` : time;
-        const ms = Date.parse(dateStr);
-        return isNaN(ms) ? null : ms;
+        return parseTimeOrDefault(dateStr);
       },
       buildChatLine(node, userName, aiName, dateOf) {
         if (node.classList.contains('system_msg_container')) {
@@ -538,8 +549,7 @@
             if (dateOnly) dateStr = `${dateOnly} ${time}`;
           }
         }
-        const ms = Date.parse(dateStr);
-        return isNaN(ms) ? null : ms;
+        return parseTimeOrDefault(dateStr);
       },
       buildChatLine(msgEl, userName, aiName) {
         const t    = getMsgText(msgEl);
@@ -752,11 +762,10 @@
         return Array.from(document.querySelectorAll('app-group-message.message'));
       },
       getMsgDatetime(node) {
-        const timeEl = node.querySelector('time, .message-time, .time');
+        const timeEl = node.querySelector('.timestamp .margin-right-text');
         const time   = timeEl?.textContent?.trim();
         if (!time) return null;
-        const ms = Date.parse(time);
-        return isNaN(ms) ? null : ms;
+        return parseTimeOrDefault(time);
       },
       buildChatLine(node, userName, aiName) {
         const isOut = node.classList.contains('my-message');
@@ -911,8 +920,7 @@
         const time   = timeEl?.textContent?.trim();
         if (!time) return null;
         const clean = time.replace(/[✓✗\s]+$/g, '').trim();
-        const ms = Date.parse(clean);
-        return isNaN(ms) ? null : ms;
+        return parseTimeOrDefault(clean);
       },
       buildChatLine(node, userName, aiName) {
         const t    = getMsgText(node);
@@ -1152,9 +1160,18 @@
       .map(node => ADAPTER.buildChatLine(node, userName, aiName, dateOf))
       .filter(Boolean);
 
+    // First-message datetime for the opening NARRATOR line (dice mode only)
+    let firstDt = null;
+    if (!nodes && allNodes.length) {
+      const firstMsg = ADAPTER.name === 'arousr'
+        ? allNodes.find(n => !n.classList.contains('system_msg_container'))
+        : allNodes[0];
+      if (firstMsg) firstDt = ADAPTER.getMsgDatetime?.(firstMsg, dateOf) ?? null;
+    }
+
     // In dice mode, swap USER/AI inside NARRATOR content only — headers stay [USER]/[AI].
     if (!realNames) {
-      const header = !nodes ? `[NARRATOR]: {{user}} and {{char}} started a virtual chat in ${location.href}\n` : '';
+      const header = !nodes ? `${formatWithDatetime('[NARRATOR]', firstDt)}: {{user}} and {{char}} started a virtual chat in ${location.href}\n` : '';
       const body   = lines.map(line =>
         line.startsWith('[NARRATOR]:')
           ? line.replace(/\bUSER\b/g, '{{user}}').replace(/\bAI\b/g, '{{char}}')
