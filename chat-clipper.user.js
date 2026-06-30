@@ -244,17 +244,25 @@
   }
 
   // Parse a time string to Unix-ms; if time-only strings like "11:17 AM" or
-  // date+time strings without a year (e.g. "Jun 29, 11:46 PM") fail Date.parse,
-  // extract just the time portion and prepend today's full date.
+  // date+time strings without a year (e.g. "Jun 29, 11:46 PM") fail Date.parse.
+  // First try inserting the current year; then fall back to time-only + today.
   function parseTimeOrDefault(str) {
     const ms = Date.parse(str);
     if (!isNaN(ms)) return ms;
+    const year = new Date().getFullYear();
+    // If str contains a recognisable month+day (e.g. "Jun 29,"), slot in a year
+    const withYear = str.replace(/^(\w+\s+\d+),\s*/, `$1, ${year} `);
+    if (withYear !== str) {
+      const ms2 = Date.parse(withYear);
+      if (!isNaN(ms2)) return ms2;
+    }
+    // Last resort: extract time only and use today's full date
     const now = new Date();
     const datePart = now.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
     const m = str.match(/\d{1,2}:\d{2}(?:\s*[AaPp][Mm])?/);
     if (m) {
-      const ms2 = Date.parse(`${datePart} ${m[0]}`);
-      if (!isNaN(ms2)) return ms2;
+      const ms3 = Date.parse(`${datePart} ${m[0]}`);
+      if (!isNaN(ms3)) return ms3;
     }
     return null;
   }
