@@ -545,8 +545,10 @@
         return Array.from(document.querySelectorAll(MSG_SEL));
       },
       getMsgDatetime(msgEl) {
-        // Time lives inside .b-chat__message for own messages,
-        // but is a sibling of .b-chat__message for other-user messages.
+        const group = msgEl.closest('.b-chat__item-message');
+        // Try current message, sibling walk, then any message in the same group
+        // (OnlyFans clusters messages sent within minutes, showing the time
+        // element only on the last message of the cluster).
         let timeEl = msgEl.querySelector('.b-chat__message__time');
         if (!timeEl) {
           let sib = msgEl.nextElementSibling;
@@ -555,15 +557,17 @@
           }
           timeEl = sib;
         }
+        if (!timeEl && group) {
+          timeEl = group.querySelector('.b-chat__message__time');
+        }
         // Use span[title] to skip our injected .ac-sel-group span
         const timeSpan = timeEl?.querySelector('span[title]');
         const time     = timeSpan?.textContent?.trim();
         if (!time) return null;
         // Date from system timeline in parent .b-chat__item-message
         let dateStr = time;
-        const item = msgEl.closest('.b-chat__item-message');
-        if (item) {
-          const sysTime = item.querySelector('.b-chat__messages__time span[title]');
+        if (group) {
+          const sysTime = group.querySelector('.b-chat__messages__time span[title]');
           if (sysTime) {
             const title = sysTime.getAttribute('title'); // "Jun 15, 12:00 am"
             const dateOnly = title?.split(',')[0]?.trim(); // "Jun 15"
