@@ -592,9 +592,9 @@
           let quotedText = quotedTextEl?.textContent?.trim() || '';
           quotedText = quotedText.replace(/^["\u201C\u201D\s]+|["\u201C\u201D\s]+$/g, '').trim();
           if (quotedText) {
-            lines.push(`[NARRATOR]: ${name} replies to the message of ${quotedAuthor} where they said "${quotedText}"`);
+            lines.push(`${formatWithDatetime('[NARRATOR]', dt)}: ${name} replies to the message of ${quotedAuthor} where they said "${quotedText}"`);
           } else {
-            lines.push(`[NARRATOR]: ${name} replies to the message of ${quotedAuthor}`);
+            lines.push(`${formatWithDatetime('[NARRATOR]', dt)}: ${name} replies to the message of ${quotedAuthor}`);
           }
         }
 
@@ -792,6 +792,11 @@
         while (timeEl && !timeEl.classList.contains('timestamp')) {
           timeEl = timeEl.nextElementSibling;
         }
+        // Fallback: search parent for any timestamp in the same group
+        if (!timeEl) {
+          const p = node.parentElement;
+          timeEl = p?.querySelector('.timestamp');
+        }
         const timeSpan = timeEl?.querySelector('.margin-right-text');
         const time     = timeSpan?.textContent?.trim();
         if (!time) return null;
@@ -816,7 +821,7 @@
           if (quoted) {
             const quotedText   = (quoted.querySelector('.message-text')?.textContent || '').trim();
             const quotedAuthor = quoted.querySelector('.reply-footer .display-name')?.textContent?.trim() || '?';
-            lines.push(`[NARRATOR]: ${isOut ? aiName : userName} replies to the message of ${quotedAuthor} where they said "${quotedText}"`);
+            lines.push(`${formatWithDatetime('[NARRATOR]', dt)}: ${isOut ? aiName : userName} replies to the message of ${quotedAuthor} where they said "${quotedText}"`);
           }
           lines.push(`${formatWithDatetime(who, dt)}: ${ownText}`);
         }
@@ -965,9 +970,9 @@
           const quotedAuthor = reply.querySelector('.sender-name')?.textContent?.trim() || '?';
           const quotedText   = reply.querySelector('.text.has-text')?.textContent?.trim() || '';
           if (quotedText) {
-            lines.push(`[NARRATOR]: ${name} replies to the message of ${quotedAuthor} where they said "${quotedText}"`);
+            lines.push(`${formatWithDatetime('[NARRATOR]', dt)}: ${name} replies to the message of ${quotedAuthor} where they said "${quotedText}"`);
           } else {
-            lines.push(`[NARRATOR]: ${name} replies to the message of ${quotedAuthor}`);
+            lines.push(`${formatWithDatetime('[NARRATOR]', dt)}: ${name} replies to the message of ${quotedAuthor}`);
           }
         }
 
@@ -1203,7 +1208,7 @@
     if (!realNames) {
       const header = !nodes ? `${formatWithDatetime('[NARRATOR]', firstDt)}: {{user}} and {{char}} started a virtual chat in ${location.href}\n` : '';
       const body   = lines.map(line =>
-        line.startsWith('[NARRATOR]:')
+        line.startsWith('[NARRATOR]')
           ? line.replace(/\bUSER\b/g, '{{user}}').replace(/\bAI\b/g, '{{char}}')
           : line
       ).join('\n');
