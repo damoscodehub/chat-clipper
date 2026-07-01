@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Chat Clipper  (Arousr · OnlyFans · Fansly)
 // @namespace    https://github.com/damoscodehub/chat-clipper
-// @version      1.2.3
+// @version      1.4.0
 // @description  Per-message copy buttons, selective copy, and chat-export in Arousr, OnlyFans, and Fansly
 // @author       damoscodehub
 // @match        https://chat.arousr.com/*
@@ -232,8 +232,40 @@
 
   /* ── Shared config ─────────────────────────────────────────────────── */
 
-  const INCLUDE_DATETIME = false;
   const GREETING_TEXT = 'Hi there! How are you? What\'s your name, or what do you like to be called if you\'d rather not share your real name?';
+
+  /* ── Helpers ──────────────────────────────────────────────────────── */
+
+  function formatWithDatetime(who, datetime) {
+    if (datetime) {
+      return `[${who.slice(1, -1)}; datetime=${datetime}]`;
+    }
+    return who;
+  }
+
+  // Parse a time string to Unix-ms; if time-only strings like "11:17 AM" or
+  // date+time strings without a year (e.g. "Jun 29, 11:46 PM") fail Date.parse.
+  // First try inserting the current year; then fall back to time-only + today.
+  function parseTimeOrDefault(str) {
+    const ms = Date.parse(str);
+    if (!isNaN(ms)) return ms;
+    const year = new Date().getFullYear();
+    // If str contains a recognisable month+day (e.g. "Jun 29,"), slot in a year
+    const withYear = str.replace(/^(\w+\s+\d+),\s*/, `$1, ${year} `);
+    if (withYear !== str) {
+      const ms2 = Date.parse(withYear);
+      if (!isNaN(ms2)) return ms2;
+    }
+    // Last resort: extract time only and use today's full date
+    const now = new Date();
+    const datePart = now.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    const m = str.match(/\d{1,2}:\d{2}(?:\s*[AaPp][Mm])?/);
+    if (m) {
+      const ms3 = Date.parse(`${datePart} ${m[0]}`);
+      if (!isNaN(ms3)) return ms3;
+    }
+    return null;
+  }
 
   /* ── NARRATOR config (Arousr) ────────────────────────────────────────
    *
@@ -309,6 +341,7 @@
    *   getAiName()       creator/AI display name
    *   getAllChatNodes()  ordered array of all message nodes (for full copy)
    *   buildChatLine(node, userName, aiName, dateOf) -> string | null
+   *   getMsgDatetime(node, dateOf?) -> number | null   Unix-ms timestamp
    *   selectedSelector  CSS selector for .ac-selected nodes
    *   deselectSelector  CSS selector for .closest() on deselect
    *   getHeaderBar()    action bar element or null
@@ -338,6 +371,17 @@
           '.ar_incoming_msg_box, .ar_outgoing_msg_box, .system_msg_container'
         ));
       },
+      getMsgDatetime(node, dateOf) {
+        if (node.classList.contains('system_msg_container')) return null;
+        const isIn   = node.classList.contains('ar_incoming_msg_box');
+        const sel    = isIn ? '.chatInMsgTime' : '.sysMsgTime, .chatOutMsgTime';
+        const timeEl = node.querySelector(sel);
+        const time   = timeEl?.textContent?.trim() || '';
+        if (!time) return null;
+        const dateLabel = dateOf?.get(node) || '';
+        const dateStr   = dateLabel ? `${dateLabel} ${time}` : time;
+        return parseTimeOrDefault(dateStr);
+      },
       buildChatLine(node, userName, aiName, dateOf) {
         if (node.classList.contains('system_msg_container')) {
           return narratorSystemLine(node, userName, aiName);
@@ -346,15 +390,9 @@
         const textEl = node.querySelector('.messageText');
         const t      = (textEl?.innerText || textEl?.textContent || '').trim();
         if (t) {
-          let ts = '';
-          if (INCLUDE_DATETIME && dateOf) {
-            const timeEl    = node.querySelector(isIn ? '.chatInMsgTime' : '.chatOutMsgTime');
-            const time      = timeEl?.textContent?.trim() || '';
-            const dateLabel = dateOf.get(node) || '';
-            const parts     = [dateLabel, time].filter(Boolean).join(' ');
-            if (parts) ts = ` [${parts}]`;
-          }
-          return `${isIn ? `[${aiName}]` : `[${userName}]`}: ${t}${ts}`;
+          const who  = isIn ? `[${aiName}]` : `[${userName}]`;
+          const dt   = this.getMsgDatetime(node, dateOf);
+          return `${formatWithDatetime(who, dt)}: ${t}`;
         }
         return narratorMediaLine(node, userName, aiName);
       },
@@ -506,11 +544,44 @@
       getAllChatNodes() {
         return Array.from(document.querySelectorAll(MSG_SEL));
       },
+      getMsgDatetime(msgEl) {
+        const group = msgEl.closest('.b-chat__item-message');
+        // Try current message, sibling walk, then any message in the same group
+        // (OnlyFans clusters messages sent within minutes, showing the time
+        // element only on the last message of the cluster).
+        let timeEl = msgEl.querySelector('.b-chat__message__time');
+        if (!timeEl) {
+          let sib = msgEl.nextElementSibling;
+          while (sib && !sib.classList.contains('b-chat__message__time')) {
+            sib = sib.nextElementSibling;
+          }
+          timeEl = sib;
+        }
+        if (!timeEl && group) {
+          timeEl = group.querySelector('.b-chat__message__time');
+        }
+        // Use span[title] to skip our injected .ac-sel-group span
+        const timeSpan = timeEl?.querySelector('span[title]');
+        const time     = timeSpan?.textContent?.trim();
+        if (!time) return null;
+        // Date from system timeline in parent .b-chat__item-message
+        let dateStr = time;
+        if (group) {
+          const sysTime = group.querySelector('.b-chat__messages__time span[title]');
+          if (sysTime) {
+            const title = sysTime.getAttribute('title'); // "Jun 15, 12:00 am"
+            const dateOnly = title?.split(',')[0]?.trim(); // "Jun 15"
+            if (dateOnly) dateStr = `${dateOnly} ${time}`;
+          }
+        }
+        return parseTimeOrDefault(dateStr);
+      },
       buildChatLine(msgEl, userName, aiName) {
         const t    = getMsgText(msgEl);
         const out  = isOut(msgEl);
         const who  = out ? `[${aiName}]` : `[${userName}]`;
         const name = out ? aiName : userName;
+        const dt   = this.getMsgDatetime(msgEl);
         const lines = [];
 
         // Reply context
@@ -521,9 +592,9 @@
           let quotedText = quotedTextEl?.textContent?.trim() || '';
           quotedText = quotedText.replace(/^["\u201C\u201D\s]+|["\u201C\u201D\s]+$/g, '').trim();
           if (quotedText) {
-            lines.push(`[NARRATOR]: ${name} replies to the message of ${quotedAuthor} where they said "${quotedText}"`);
+            lines.push(`${formatWithDatetime('[NARRATOR]', dt)}: ${name} replies to the message of ${quotedAuthor} where they said "${quotedText}"`);
           } else {
-            lines.push(`[NARRATOR]: ${name} replies to the message of ${quotedAuthor}`);
+            lines.push(`${formatWithDatetime('[NARRATOR]', dt)}: ${name} replies to the message of ${quotedAuthor}`);
           }
         }
 
@@ -532,7 +603,7 @@
                      : msgEl.classList.contains('m-video') ? 'a video' : 'media';
           lines.push(`[NARRATOR]: ${name} sent ${type}.`);
         }
-        if (t) lines.push(`${who}: ${t}`);
+        if (t) lines.push(`${formatWithDatetime(who, dt)}: ${t}`);
         return lines.length ? lines.join('\n') : null;
       },
       selectedSelector: `${MSG_SEL.replace(':not(.b-chat__message__system)', '')}.ac-selected`,
@@ -715,9 +786,28 @@
       getAllChatNodes() {
         return Array.from(document.querySelectorAll('app-group-message.message'));
       },
+      getMsgDatetime(node) {
+        // Try: sibling → parent's next sibling → collection → inside node
+        let sib = node.nextElementSibling;
+        while (sib && !sib.classList.contains('timestamp')) sib = sib.nextElementSibling;
+        let timeEl = sib;
+        // Fansly: timestamp is a sibling of the parent flex-col, not of app-group-message
+        if (!timeEl && node.parentElement) {
+          sib = node.parentElement.nextElementSibling;
+          while (sib && !sib.classList.contains('timestamp')) sib = sib.nextElementSibling;
+          timeEl = sib;
+        }
+        if (!timeEl) timeEl = node.closest('app-group-message-collection')?.querySelector('.timestamp');
+        if (!timeEl) timeEl = node.querySelector('time, [class*=time]');
+        const timeSpan = timeEl?.classList?.contains('margin-right-text') ? timeEl : timeEl?.querySelector('.margin-right-text');
+        const time     = timeSpan?.textContent?.trim();
+        if (!time) return null;
+        return parseTimeOrDefault(time);
+      },
       buildChatLine(node, userName, aiName) {
         const isOut = node.classList.contains('my-message');
         const who   = isOut ? `[${aiName}]` : `[${userName}]`;
+        const dt    = this.getMsgDatetime(node);
 
         // Tip received from fan
         const tip = getTipInfo(node);
@@ -733,9 +823,9 @@
           if (quoted) {
             const quotedText   = (quoted.querySelector('.message-text')?.textContent || '').trim();
             const quotedAuthor = quoted.querySelector('.reply-footer .display-name')?.textContent?.trim() || '?';
-            lines.push(`[NARRATOR]: ${isOut ? aiName : userName} replies to the message of ${quotedAuthor} where they said "${quotedText}"`);
+            lines.push(`${formatWithDatetime('[NARRATOR]', dt)}: ${isOut ? aiName : userName} replies to the message of ${quotedAuthor} where they said "${quotedText}"`);
           }
-          lines.push(`${who}: ${ownText}`);
+          lines.push(`${formatWithDatetime(who, dt)}: ${ownText}`);
         }
 
         // Image / video — appears whether or not there is also text (mixed messages)
@@ -862,11 +952,19 @@
       getAllChatNodes() {
         return Array.from(document.querySelectorAll(MSG_SEL));
       },
+      getMsgDatetime(node) {
+        const timeEl = node.querySelector('.message-text time');
+        const time   = timeEl?.textContent?.trim();
+        if (!time) return null;
+        const clean = time.replace(/[✓✗\s]+$/g, '').trim();
+        return parseTimeOrDefault(clean);
+      },
       buildChatLine(node, userName, aiName) {
         const t    = getMsgText(node);
         const out  = isOut(node);
         const who  = out ? `[${aiName}]` : `[${userName}]`;
         const name = out ? aiName : userName;
+        const dt   = this.getMsgDatetime(node);
         const lines = [];
 
         const reply = getReplyPreview(node);
@@ -874,13 +972,13 @@
           const quotedAuthor = reply.querySelector('.sender-name')?.textContent?.trim() || '?';
           const quotedText   = reply.querySelector('.text.has-text')?.textContent?.trim() || '';
           if (quotedText) {
-            lines.push(`[NARRATOR]: ${name} replies to the message of ${quotedAuthor} where they said "${quotedText}"`);
+            lines.push(`${formatWithDatetime('[NARRATOR]', dt)}: ${name} replies to the message of ${quotedAuthor} where they said "${quotedText}"`);
           } else {
-            lines.push(`[NARRATOR]: ${name} replies to the message of ${quotedAuthor}`);
+            lines.push(`${formatWithDatetime('[NARRATOR]', dt)}: ${name} replies to the message of ${quotedAuthor}`);
           }
         }
 
-        if (t) lines.push(`${who}: ${t}`);
+        if (t) lines.push(`${formatWithDatetime(who, dt)}: ${t}`);
         return lines.length ? lines.join('\n') : null;
       },
       selectedSelector: `${MSG_SEL}.ac-selected`,
@@ -1078,7 +1176,7 @@
 
     // Datetime pre-scan (Arousr only)
     const dateOf = new Map();
-    if (INCLUDE_DATETIME && ADAPTER.name === 'arousr') {
+    if (ADAPTER.name === 'arousr') {
       const root = document.querySelector('.infinite-scroll-component');
       if (root) {
         let curDate = '';
@@ -1099,13 +1197,21 @@
       .map(node => ADAPTER.buildChatLine(node, userName, aiName, dateOf))
       .filter(Boolean);
 
+    // First-message datetime for the opening NARRATOR line (dice mode only)
+    let firstDt = null;
+    if (!nodes && allNodes.length) {
+      const firstMsg = ADAPTER.name === 'arousr'
+        ? allNodes.find(n => !n.classList.contains('system_msg_container'))
+        : allNodes[0];
+      if (firstMsg) firstDt = ADAPTER.getMsgDatetime?.(firstMsg, dateOf) ?? null;
+    }
+
     // In dice mode, swap USER/AI inside NARRATOR content only — headers stay [USER]/[AI].
     if (!realNames) {
-      const header = !nodes ? `[NARRATOR]: {{user}} and {{char}} started a virtual chat in ${location.href}\n` : '';
+      const header = !nodes ? `${formatWithDatetime('[NARRATOR]', firstDt)}: {{user}} and {{char}} started a virtual chat in ${location.href}\n` : '';
       const body   = lines.map(line =>
-        line.startsWith('[NARRATOR]:')
-          ? line.replace(/\bUSER\b/g, '{{user}}').replace(/\bAI\b/g, '{{char}}')
-          : line
+        line.replace(/\bUSER\b/g, '{{user}}').replace(/\bAI\b/g, '{{char}}')
+            .replace(/\[{{user}}/g, '[USER').replace(/\[{{char}}/g, '[AI')
       ).join('\n');
       return `${header}${body}`;
     }
