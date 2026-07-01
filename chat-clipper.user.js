@@ -1207,11 +1207,14 @@
     // In dice mode, swap USER/AI inside NARRATOR content only — headers stay [USER]/[AI].
     if (!realNames) {
       const header = !nodes ? `${formatWithDatetime('[NARRATOR]', firstDt)}: {{user}} and {{char}} started a virtual chat in ${location.href}\n` : '';
-      const body   = lines.map(line =>
-        line.startsWith('[NARRATOR]')
-          ? line.replace(/\bUSER\b/g, '{{user}}').replace(/\bAI\b/g, '{{char}}')
-          : line
-      ).join('\n');
+      console.debug('[AC] lines before:', lines);
+      const body   = lines.map(line => {
+        const after = line.replace(/\bUSER\b/g, '{{user}}').replace(/\bAI\b/g, '{{char}}')
+            .replace(/\[{{user}}/g, '[USER').replace(/\[{{char}}/g, '[AI');
+        console.debug('[AC]  line in:', JSON.stringify(line), '→ out:', JSON.stringify(after));
+        return after;
+      }).join('\n');
+      console.debug('[AC] final body:', JSON.stringify(body));
       return `${header}${body}`;
     }
     return lines.join('\n');
@@ -1344,7 +1347,16 @@
 
   /* ── Init ───────────────────────────────────────────────────────────── */
 
+  function addVersionOverlay() {
+    const el = document.createElement('div');
+    el.id = 'ac-version';
+    el.textContent = 'v1.3.1';
+    el.style.cssText = 'position:fixed;bottom:4px;right:4px;z-index:99999;background:rgba(0,0,0,.55);color:#fff;font:11px/16px monospace;padding:1px 5px;border-radius:3px;pointer-events:none';
+    document.body.appendChild(el);
+  }
+
   function init() {
+    addVersionOverlay();
     scan();
     addHeaderButtons();
   }
