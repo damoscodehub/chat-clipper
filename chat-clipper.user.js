@@ -1,9 +1,10 @@
 // ==UserScript==
 // @name         Chat Clipper  (Arousr · OnlyFans · Fansly)
 // @namespace    https://github.com/damoscodehub/chat-clipper
-// @version      1.4.0
+// @version      1.4.5
 // @description  Per-message copy buttons, selective copy, and chat-export in Arousr, OnlyFans, and Fansly
 // @author       damoscodehub
+// @grant        GM_addStyle
 // @match        https://chat.arousr.com/*
 // @match        https://onlyfans.com/my/chats/*
 // @match        https://fansly.com/messages/*
@@ -243,14 +244,18 @@
     return who;
   }
 
-  // Parse a time string to Unix-ms; if time-only strings like "11:17 AM" or
-  // date+time strings without a year (e.g. "Jun 29, 11:46 PM") fail Date.parse.
-  // First try inserting the current year; then fall back to time-only + today.
+  // Parse a time string to Unix-ms; time-only strings ("11:17 AM") or
+  // date+time strings without a year ("Jun 29, 11:46 PM") can silently
+  // produce year 2001 in V8, so we reject unreasonable years.
   function parseTimeOrDefault(str) {
+    function yearOk(d) {
+      const y = d.getFullYear();
+      const cy = new Date().getFullYear();
+      return y >= cy - 10 && y <= cy + 5;
+    }
     const ms = Date.parse(str);
-    if (!isNaN(ms)) return ms;
+    if (!isNaN(ms) && yearOk(new Date(ms))) return ms;
     const year = new Date().getFullYear();
-    // If str contains a recognisable month+day (e.g. "Jun 29,"), slot in a year
     const withYear = str.replace(/^(\w+\s+\d+),\s*/, `$1, ${year} `);
     if (withYear !== str) {
       const ms2 = Date.parse(withYear);
@@ -265,6 +270,24 @@
       if (!isNaN(ms3)) return ms3;
     }
     return null;
+  }
+
+  function normalizeDateStamp(str) {
+    const now = new Date();
+    if (/^today/i.test(str)) return now.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    if (/^yesterday/i.test(str)) {
+      const d = new Date(now);
+      d.setDate(d.getDate() - 1);
+      return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    }
+    const clean = str.replace(/^(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun),\s*/i, '');
+    const year = now.getFullYear();
+    const withYear = clean.replace(/^(\w+\s+\d+),\s*/, `$1, ${year} `);
+    if (withYear !== clean) {
+      const ms = Date.parse(withYear);
+      if (!isNaN(ms)) return new Date(ms).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    }
+    return str;
   }
 
   /* ── NARRATOR config (Arousr) ────────────────────────────────────────
@@ -544,7 +567,7 @@
       getAllChatNodes() {
         return Array.from(document.querySelectorAll(MSG_SEL));
       },
-      getMsgDatetime(msgEl) {
+      getMsgDatetime(msgEl, dateOf) {
         const group = msgEl.closest('.b-chat__item-message');
         // Try current message, sibling walk, then any message in the same group
         // (OnlyFans clusters messages sent within minutes, showing the time
@@ -564,7 +587,12 @@
         const timeSpan = timeEl?.querySelector('span[title]');
         const time     = timeSpan?.textContent?.trim();
         if (!time) return null;
-        // Date from system timeline in parent .b-chat__item-message
+        // Pre-scan date via dateOf (Arousr-style)
+        const dateLabel = dateOf?.get(msgEl) || '';
+        if (dateLabel) {
+          return parseTimeOrDefault(`${dateLabel} ${time}`);
+        }
+        // Fallback: date from system timeline inside .b-chat__item-message
         let dateStr = time;
         if (group) {
           const sysTime = group.querySelector('.b-chat__messages__time span[title]');
@@ -576,12 +604,12 @@
         }
         return parseTimeOrDefault(dateStr);
       },
-      buildChatLine(msgEl, userName, aiName) {
+      buildChatLine(msgEl, userName, aiName, dateOf) {
         const t    = getMsgText(msgEl);
         const out  = isOut(msgEl);
         const who  = out ? `[${aiName}]` : `[${userName}]`;
         const name = out ? aiName : userName;
-        const dt   = this.getMsgDatetime(msgEl);
+        const dt   = this.getMsgDatetime(msgEl, dateOf);
         const lines = [];
 
         // Reply context
@@ -1063,6 +1091,17 @@
     return execCommandCopy(text);
   }
 
+  /* ── Version overlay (hidden — uncomment addVersionBadge() in init() to show) ── */
+
+  GM_addStyle(`.ac-version-badge{position:fixed;bottom:8px;right:8px;z-index:99999;background:rgba(0,0,0,.7);color:#0f0;font:bold 12px/1 monospace;padding:3px 7px;border-radius:4px;pointer-events:none;}`);
+
+  function addVersionBadge() {
+    const el = document.createElement('div');
+    el.className = 'ac-version-badge';
+    el.textContent = GM_info.script.version;
+    document.body.appendChild(el);
+  }
+
   function flash(btn, checkSvg) {
     const saved = btn.innerHTML;
     const prevOpacity = btn.style.opacity;
@@ -1174,21 +1213,44 @@
     const allNodes = nodes || ADAPTER.getAllChatNodes();
     if (!allNodes.length) return '';
 
-    // Datetime pre-scan (Arousr only)
+    // Datetime pre-scan (Arousr / OnlyFans)
     const dateOf = new Map();
     if (ADAPTER.name === 'arousr') {
-      const root = document.querySelector('.infinite-scroll-component');
+      const all = document.querySelectorAll('.infinite-scroll-component');
+      const root = all.length > 1 ? all[1] : all[0];
       if (root) {
         let curDate = '';
-        for (const node of root.children) {
-          const isMsg = node.classList.contains('ar_incoming_msg_box') ||
-                        node.classList.contains('ar_outgoing_msg_box');
-          if (isMsg) {
-            dateOf.set(node, curDate);
+        const els = root.querySelectorAll('.dateTimeStampChat, .ar_incoming_msg_box, .ar_outgoing_msg_box');
+        for (const el of els) {
+          if (el.classList.contains('dateTimeStampChat')) {
+            const t = el.textContent.trim();
+            if (t) curDate = normalizeDateStamp(t);
           } else {
-            const t = (node.innerText || node.textContent || '').trim();
-            if (t && t.length <= 30) curDate = t;
+            dateOf.set(el, curDate);
           }
+        }
+      }
+    } else if (ADAPTER.name === 'onlyfans') {
+      const items = [];
+      document.querySelectorAll('.b-chat__message__system.m-timeline').forEach(el => items.push({el, kind: 'date'}));
+      document.querySelectorAll('.b-chat__messages__time').forEach(el => {
+        if (!el.closest('.b-chat__message__system.m-timeline')) items.push({el, kind: 'date'});
+      });
+      document.querySelectorAll('.b-chat__item-message .b-chat__message:not(.b-chat__message__system)').forEach(el => items.push({el, kind: 'msg'}));
+      items.sort((a, b) => a.el === b.el ? 0 : (a.el.compareDocumentPosition(b.el) & Node.DOCUMENT_POSITION_FOLLOWING) ? -1 : 1);
+      let curDate = '';
+      for (const {el, kind} of items) {
+        if (kind === 'date') {
+          const span = el.querySelector('span[title]');
+          const title = span?.getAttribute('title') || '';
+          if (title) {
+            const text = span.textContent.trim();
+            const abbrYear = text.match(/'(\d{2})$/);
+            const dateInput = abbrYear ? `${title.split(',')[0].trim()}, ${2000 + parseInt(abbrYear[1])}` : title;
+            curDate = normalizeDateStamp(dateInput);
+          }
+        } else {
+          dateOf.set(el, curDate);
         }
       }
     }
@@ -1346,6 +1408,7 @@
   /* ── Init ───────────────────────────────────────────────────────────── */
 
   function init() {
+    // addVersionBadge();  // uncomment to show version overlay
     scan();
     addHeaderButtons();
   }
