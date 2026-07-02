@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Chat Clipper  (Arousr · OnlyFans · Fansly)
 // @namespace    https://github.com/damoscodehub/chat-clipper
-// @version      1.4.6
+// @version      1.4.7
 // @description  Per-message copy buttons, selective copy, and chat-export in Arousr, OnlyFans, and Fansly
 // @author       damoscodehub
 // @grant        GM_addStyle
@@ -1233,15 +1233,17 @@
       const root = all.length > 1 ? all[1] : all[0];
       if (root) {
         let curDate = '';
+        let firstDate = '';
         const els = root.querySelectorAll('.dateTimeStampChat, .ar_incoming_msg_box, .ar_outgoing_msg_box');
         for (const el of els) {
           if (el.classList.contains('dateTimeStampChat')) {
             const t = el.textContent.trim();
-            if (t) curDate = normalizeDateStamp(t);
+            if (t) { curDate = normalizeDateStamp(t); if (!firstDate) firstDate = curDate; }
           } else {
             dateOf.set(el, curDate);
           }
         }
+        if (firstDate) for (const [node, val] of dateOf) { if (!val) dateOf.set(node, firstDate); }
       }
     } else if (ADAPTER.name === 'onlyfans') {
       const items = [];
@@ -1252,6 +1254,7 @@
       document.querySelectorAll('.b-chat__item-message .b-chat__message:not(.b-chat__message__system)').forEach(el => items.push({el, kind: 'msg'}));
       items.sort((a, b) => a.el === b.el ? 0 : (a.el.compareDocumentPosition(b.el) & Node.DOCUMENT_POSITION_FOLLOWING) ? -1 : 1);
       let curDate = '';
+      let firstDate = '';
       for (const {el, kind} of items) {
         if (kind === 'date') {
           const span = el.querySelector('span[title]');
@@ -1261,25 +1264,29 @@
             const abbrYear = text.match(/'(\d{2})$/);
             const dateInput = abbrYear ? `${title.split(',')[0].trim()}, ${2000 + parseInt(abbrYear[1])}` : title;
             curDate = normalizeDateStamp(dateInput);
+            if (!firstDate) firstDate = curDate;
           }
         } else {
           dateOf.set(el, curDate);
         }
       }
+      if (firstDate) for (const [node, val] of dateOf) { if (!val) dateOf.set(node, firstDate); }
     } else if (ADAPTER.name === 'loyalfans') {
       const items = [];
       document.querySelectorAll('.message-date').forEach(el => items.push({el, kind: 'date'}));
       document.querySelectorAll('app-message').forEach(el => items.push({el, kind: 'msg'}));
       items.sort((a, b) => a.el === b.el ? 0 : (a.el.compareDocumentPosition(b.el) & Node.DOCUMENT_POSITION_FOLLOWING) ? -1 : 1);
       let curDate = '';
+      let firstDate = '';
       for (const {el, kind} of items) {
         if (kind === 'date') {
           const t = el.textContent.trim();
-          if (t) curDate = normalizeDateStamp(t);
+          if (t) { curDate = normalizeDateStamp(t); if (!firstDate) firstDate = curDate; }
         } else {
           dateOf.set(el, curDate);
         }
       }
+      if (firstDate) for (const [node, val] of dateOf) { if (!val) dateOf.set(node, firstDate); }
     }
 
     const lines = allNodes
