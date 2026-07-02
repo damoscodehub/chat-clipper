@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Chat Clipper  (Arousr · OnlyFans · Fansly)
 // @namespace    https://github.com/damoscodehub/chat-clipper
-// @version      1.4.5
+// @version      1.4.6
 // @description  Per-message copy buttons, selective copy, and chat-export in Arousr, OnlyFans, and Fansly
 // @author       damoscodehub
 // @grant        GM_addStyle
@@ -280,9 +280,20 @@
       d.setDate(d.getDate() - 1);
       return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
     }
+    // If a 4-digit year is already present, parse with the same reasonability guard
+    if (/\b\d{4}\b/.test(str)) {
+      const ms = Date.parse(str);
+      if (!isNaN(ms)) {
+        const d = new Date(ms);
+        const cy = now.getFullYear();
+        if (d.getFullYear() >= cy - 10 && d.getFullYear() <= cy + 5) {
+          return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+        }
+      }
+    }
+    // Strip day-of-week prefix and insert current year
     const clean = str.replace(/^(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun),\s*/i, '');
-    const year = now.getFullYear();
-    const withYear = clean.replace(/^(\w+\s+\d+),\s*/, `$1, ${year} `);
+    const withYear = clean.replace(/^(\w+\s+\d+),\s*/, `$1, ${now.getFullYear()} `);
     if (withYear !== clean) {
       const ms = Date.parse(withYear);
       if (!isNaN(ms)) return new Date(ms).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
@@ -980,19 +991,21 @@
       getAllChatNodes() {
         return Array.from(document.querySelectorAll(MSG_SEL));
       },
-      getMsgDatetime(node) {
+      getMsgDatetime(node, dateOf) {
         const timeEl = node.querySelector('.message-text time');
         const time   = timeEl?.textContent?.trim();
         if (!time) return null;
         const clean = time.replace(/[✓✗\s]+$/g, '').trim();
+        const dateLabel = dateOf?.get(node) || '';
+        if (dateLabel) return parseTimeOrDefault(`${dateLabel} ${clean}`);
         return parseTimeOrDefault(clean);
       },
-      buildChatLine(node, userName, aiName) {
+      buildChatLine(node, userName, aiName, dateOf) {
         const t    = getMsgText(node);
         const out  = isOut(node);
         const who  = out ? `[${aiName}]` : `[${userName}]`;
         const name = out ? aiName : userName;
-        const dt   = this.getMsgDatetime(node);
+        const dt   = this.getMsgDatetime(node, dateOf);
         const lines = [];
 
         const reply = getReplyPreview(node);
@@ -1249,6 +1262,20 @@
             const dateInput = abbrYear ? `${title.split(',')[0].trim()}, ${2000 + parseInt(abbrYear[1])}` : title;
             curDate = normalizeDateStamp(dateInput);
           }
+        } else {
+          dateOf.set(el, curDate);
+        }
+      }
+    } else if (ADAPTER.name === 'loyalfans') {
+      const items = [];
+      document.querySelectorAll('.message-date').forEach(el => items.push({el, kind: 'date'}));
+      document.querySelectorAll('app-message').forEach(el => items.push({el, kind: 'msg'}));
+      items.sort((a, b) => a.el === b.el ? 0 : (a.el.compareDocumentPosition(b.el) & Node.DOCUMENT_POSITION_FOLLOWING) ? -1 : 1);
+      let curDate = '';
+      for (const {el, kind} of items) {
+        if (kind === 'date') {
+          const t = el.textContent.trim();
+          if (t) curDate = normalizeDateStamp(t);
         } else {
           dateOf.set(el, curDate);
         }
