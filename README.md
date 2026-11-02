@@ -20,6 +20,7 @@ A userscript that adds **per-message copy buttons**, **selective multi-message c
 | Arousr | `https://chat.arousr.com/*` |
 | OnlyFans | `https://onlyfans.com/my/chats/*` |
 | Fansly | `https://fansly.com/messages/*` |
+| LoyalFans | `https://loyalfans.com/*` |
 
 ## Installation
 

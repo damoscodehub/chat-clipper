@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Chat Clipper  (Arousr · OnlyFans · Fansly)
 // @namespace    https://github.com/damoscodehub/chat-clipper
-// @version      1.4.7
+// @version      1.4.9
 // @description  Per-message copy buttons, selective copy, and chat-export in Arousr, OnlyFans, and Fansly
 // @author       damoscodehub
 // @grant        GM_addStyle
@@ -386,6 +386,7 @@
 
   function makeArousrAdapter() {
     const NAME_SELECTORS = [
+      '.user-name',
       '.ar_head_details h4', '.ar_head_details .name', '.ar_head_details span',
       '.ar-chat-head h4', '.ar-chat-head .name', '.chat-head-name',
       '[class*="chat-head"] h4', '[class*="customer"] h4',
@@ -432,13 +433,16 @@
       },
       selectedSelector: '.ar_incoming_msg_box.ac-selected, .ar_outgoing_msg_box.ac-selected, .system_msg_container.ac-selected',
       deselectSelector: '.ar_incoming_msg_box, .ar_outgoing_msg_box, .system_msg_container',
-      getHeaderBar()    { return document.querySelector('.ar-chat-head-right-action'); },
+      getHeaderBar()    { return document.querySelector('.ar-chat-head-right-action, .host-dp'); },
       getHeaderRef(bar) {
-        const fav = bar.querySelector('.fav-icon-wrap-call-chat');
-        if (!fav) return null;
-        let ref = fav;
-        while (ref.parentElement !== bar) { ref = ref.parentElement; if (!ref) return null; }
-        return ref;
+        if (bar.classList.contains('ar-chat-head-right-action')) {
+          const fav = bar.querySelector('.fav-icon-wrap-call-chat');
+          if (!fav) return null;
+          let ref = fav;
+          while (ref.parentElement !== bar) { ref = ref.parentElement; if (!ref) return null; }
+          return ref;
+        }
+        return null; // append al final del host-dp (header del chat activo)
       },
       getTextarea() { return document.querySelector('.type_msg textarea.write_msg'); },
       copyables: [
